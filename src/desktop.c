@@ -11,6 +11,7 @@
 #include "common/scene-helpers.h"
 #include "dnd.h"
 #include "labwc.h"
+#include "ipc.h"
 #include "layers.h"
 #include "node.h"
 #include "output.h"
@@ -114,6 +115,8 @@ desktop_focus_view(struct view *view, bool raise)
 	 */
 	struct view *dialog = view_get_modal_dialog(view);
 	set_or_offer_focus(dialog ? dialog : view);
+
+	ipc_event_window("focus", view);
 
 	show_desktop_reset();
 }

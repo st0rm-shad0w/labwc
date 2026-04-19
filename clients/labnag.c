@@ -1515,6 +1515,24 @@ parse_color(const char *color, uint32_t *result)
 	return true;
 }
 
+static void
+env_color(const char *name, uint32_t *result)
+{
+	const char *val = getenv(name);
+	if (val && !parse_color(val, result)) {
+		fprintf(stderr, "Invalid color in %s: %s\n", name, val);
+	}
+}
+
+static void
+env_long(const char *name, ssize_t *result)
+{
+	const char *val = getenv(name);
+	if (val) {
+		*result = strtol(val, NULL, 0);
+	}
+}
+
 /*
  * As labnag is slow for large "detailed messages" we curtail stdin at an
  * arbitrary size to avoid hogging the CPU.
@@ -1846,6 +1864,32 @@ main(int argc, char **argv)
 {
 	struct conf conf = { 0 };
 	conf_init(&conf);
+
+	/* Read appearance from environment (overridden by CLI flags) */
+	env_color("LABNAG_BACKGROUND_COLOR", &conf.background);
+	env_color("LABNAG_BUTTON_BORDER_COLOR", &conf.button_border);
+	env_color("LABNAG_BORDER_BOTTOM_COLOR", &conf.border_bottom);
+	env_color("LABNAG_BUTTON_BACKGROUND_COLOR", &conf.button_background);
+	env_color("LABNAG_TEXT_COLOR", &conf.text);
+	env_color("LABNAG_BUTTON_TEXT_COLOR", &conf.button_text);
+	env_color("LABNAG_DETAILS_BACKGROUND_COLOR", &conf.details_background);
+	env_color("LABNAG_DETAILS_BORDER_COLOR", &conf.details_border_color);
+
+	env_long("LABNAG_BORDER_BOTTOM_SIZE", &conf.bar_border_thickness);
+	env_long("LABNAG_MESSAGE_PADDING", &conf.message_padding);
+	env_long("LABNAG_DETAILS_BORDER_SIZE", &conf.details_border_thickness);
+	env_long("LABNAG_DETAILS_BORDER_MARGIN", &conf.details_border_margin);
+	env_long("LABNAG_BUTTON_BORDER_SIZE", &conf.button_border_thickness);
+	env_long("LABNAG_BUTTON_GAP", &conf.button_gap);
+	env_long("LABNAG_BUTTON_DISMISS_GAP", &conf.button_gap_close);
+	env_long("LABNAG_BUTTON_MARGIN_RIGHT", &conf.button_margin_right);
+	env_long("LABNAG_BUTTON_PADDING", &conf.button_padding);
+
+	const char *env_font = getenv("LABNAG_FONT");
+	if (env_font) {
+		pango_font_description_free(conf.font_description);
+		conf.font_description = pango_font_description_from_string(env_font);
+	}
 
 	struct nag nag = {
 		.conf = &conf,

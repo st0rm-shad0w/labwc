@@ -116,6 +116,66 @@ _labnag_ [options...]
 *--button-padding* <padding>
 	Set the padding for the button text.
 
+# ENVIRONMENT VARIABLES
+
+Set the environment variables listed below to configure default appearance
+values. CLI flags take precedence over environment variables. Color values
+use the format RRGGBB or RRGGBBAA.
+
+*LABNAG_BACKGROUND_COLOR*
+	Set the background color.
+
+*LABNAG_BUTTON_BORDER_COLOR*
+	Set the button border color.
+
+*LABNAG_BORDER_BOTTOM_COLOR*
+	Set the bottom border color.
+
+*LABNAG_BUTTON_BACKGROUND_COLOR*
+	Set the button background color.
+
+*LABNAG_TEXT_COLOR*
+	Set the text color.
+
+*LABNAG_BUTTON_TEXT_COLOR*
+	Set the button text color.
+
+*LABNAG_DETAILS_BACKGROUND_COLOR*
+	Set the details background color.
+
+*LABNAG_DETAILS_BORDER_COLOR*
+	Set the details border color.
+
+*LABNAG_BORDER_BOTTOM_SIZE*
+	Set the thickness of the bottom border.
+
+*LABNAG_MESSAGE_PADDING*
+	Set the message padding.
+
+*LABNAG_DETAILS_BORDER_SIZE*
+	Set the thickness of the details border.
+
+*LABNAG_DETAILS_BORDER_MARGIN*
+	Set the inner margin for the details border.
+
+*LABNAG_BUTTON_BORDER_SIZE*
+	Set the thickness of the button border.
+
+*LABNAG_BUTTON_GAP*
+	Set the gap between buttons.
+
+*LABNAG_BUTTON_DISMISS_GAP*
+	Set the gap for the dismiss button.
+
+*LABNAG_BUTTON_MARGIN_RIGHT*
+	Set the right margin for the button area.
+
+*LABNAG_BUTTON_PADDING*
+	Set the padding for button text.
+
+*LABNAG_FONT*
+	Set the font description (e.g. "Sans 10").
+
 # EXAMPLE
 
 This is a simple example of a _labnag_ logout GUI.

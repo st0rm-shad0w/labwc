@@ -50,14 +50,15 @@ ssd_thickness(struct view *view)
 	}
 
 	struct border thickness = {
-		.top = theme->titlebar_height + theme->border_width,
+		.top = theme->titlebar_height + 2 * theme->border_width,
 		.right = theme->border_width,
 		.bottom = theme->border_width,
 		.left = theme->border_width,
 	};
 
 	if (!view_titlebar_visible(view)) {
-		thickness.top -= theme->titlebar_height;
+		/* Remove titlebar and separator from top thickness */
+		thickness.top -= theme->titlebar_height + theme->border_width;
 	}
 	return thickness;
 }
@@ -101,7 +102,8 @@ ssd_get_resizing_type(const struct ssd *ssd, struct wlr_cursor *cursor)
 
 	if (view_titlebar_visible(view)) {
 		/* If the titlebar is visible, consider it part of the view */
-		int titlebar_height = rc.theme->titlebar_height;
+		int titlebar_height = rc.theme->titlebar_height
+			+ rc.theme->border_width;
 		view_box.y -= titlebar_height;
 		view_box.height += titlebar_height;
 	}
@@ -156,7 +158,7 @@ ssd_create(struct view *view, bool active)
 		LAB_NODE_SSD_ROOT, view, /*data*/ NULL);
 
 	wlr_scene_node_lower_to_bottom(&ssd->tree->node);
-	ssd->titlebar.height = rc.theme->titlebar_height;
+	ssd->titlebar.height = rc.theme->titlebar_height + rc.theme->border_width;
 	ssd_shadow_create(ssd);
 	ssd_extents_create(ssd);
 	/*
@@ -257,7 +259,8 @@ ssd_set_titlebar(struct ssd *ssd, bool enabled)
 		return;
 	}
 	wlr_scene_node_set_enabled(&ssd->titlebar.tree->node, enabled);
-	ssd->titlebar.height = enabled ? rc.theme->titlebar_height : 0;
+	ssd->titlebar.height = enabled
+		? rc.theme->titlebar_height + rc.theme->border_width : 0;
 	ssd_border_update(ssd);
 	ssd_extents_update(ssd);
 	ssd_shadow_update(ssd);
@@ -322,6 +325,11 @@ ssd_set_active(struct ssd *ssd, bool active)
 		if (ssd->shadow.subtrees[active_state].tree) {
 			wlr_scene_node_set_enabled(
 				&ssd->shadow.subtrees[active_state].tree->node,
+				active == active_state);
+		}
+		if (ssd->separator.buffers[active_state]) {
+			wlr_scene_node_set_enabled(
+				&ssd->separator.buffers[active_state]->node,
 				active == active_state);
 		}
 	}

@@ -2,13 +2,44 @@
 
 #include <assert.h>
 #include <wlr/types/wlr_scene.h>
+#include "buffer.h"
 #include "common/macros.h"
+#include "common/mem.h"
 #include "common/scene-helpers.h"
 #include "config/rcxml.h"
 #include "ssd.h"
 #include "ssd-internal.h"
 #include "theme.h"
 #include "view.h"
+
+#define TITLEBAR_DROPSHADOW_HEIGHT 5
+
+static bool
+dropshadow_never_accepts_input(struct wlr_scene_buffer *buffer, double *sx,
+	double *sy)
+{
+	return false;
+}
+
+static struct lab_data_buffer *
+get_dropshadow_buffer(void)
+{
+	static struct lab_data_buffer *buf;
+	if (buf) {
+		return buf;
+	}
+	/* 1px wide vertical gradient: black with decreasing alpha */
+	uint32_t *pixels =
+		xmalloc(TITLEBAR_DROPSHADOW_HEIGHT * sizeof(*pixels));
+	pixels[0] = 0x33000000; /* ~20% */
+	pixels[1] = 0x21000000; /* ~13% */
+	pixels[2] = 0x14000000; /*  ~8% */
+	pixels[3] = 0x0A000000; /*  ~4% */
+	pixels[4] = 0x05000000; /*  ~2% */
+	buf = buffer_create_from_data(pixels, 1, TITLEBAR_DROPSHADOW_HEIGHT,
+		sizeof(*pixels));
+	return buf;
+}
 
 void
 ssd_border_create(struct ssd *ssd)
@@ -53,10 +84,34 @@ ssd_border_create(struct ssd *ssd)
 		wlr_scene_node_set_position(&subtree->top->node,
 			theme->border_width + corner_width,
 			-(ssd->titlebar.height + theme->border_width));
+
+		/* Separator between titlebar and content */
+		subtree->separator = lab_wlr_scene_rect_create(parent,
+			full_width, theme->border_width, color);
+		wlr_scene_node_set_position(&subtree->separator->node,
+			0, -theme->border_width);
+		wlr_scene_node_set_enabled(&subtree->separator->node,
+			ssd->titlebar.height > 0 && !view->shaded);
 	}
 
-	if (view->maximized == VIEW_AXIS_BOTH) {
-		wlr_scene_node_set_enabled(&ssd->border.tree->node, false);
+	/* Titlebar drop shadow - overlay above content for visibility */
+	struct lab_data_buffer *shadow_buf = get_dropshadow_buffer();
+	if (shadow_buf) {
+		ssd->titlebar_dropshadow.tree =
+			lab_wlr_scene_tree_create(view->scene_tree);
+		wlr_scene_node_set_position(
+			&ssd->titlebar_dropshadow.tree->node,
+			-theme->border_width, 0);
+		ssd->titlebar_dropshadow.buffer = lab_wlr_scene_buffer_create(
+			ssd->titlebar_dropshadow.tree, &shadow_buf->base);
+		ssd->titlebar_dropshadow.buffer->point_accepts_input =
+			dropshadow_never_accepts_input;
+		ssd->titlebar_dropshadow.buffer->filter_mode =
+			WLR_SCALE_FILTER_NEAREST;
+		wlr_scene_buffer_set_dest_size(ssd->titlebar_dropshadow.buffer,
+			full_width, TITLEBAR_DROPSHADOW_HEIGHT);
+		wlr_scene_node_set_enabled(&ssd->titlebar_dropshadow.tree->node,
+			ssd->titlebar.height > 0 && !view->shaded);
 	}
 
 	if (view->current.width > 0 && view->current.height > 0) {
@@ -75,20 +130,10 @@ ssd_border_update(struct ssd *ssd)
 	assert(ssd->border.tree);
 
 	struct view *view = ssd->view;
-	if (view->maximized == VIEW_AXIS_BOTH
-			&& ssd->border.tree->node.enabled) {
-		/* Disable borders on maximize */
-		wlr_scene_node_set_enabled(&ssd->border.tree->node, false);
-		ssd->margin = ssd_thickness(ssd->view);
-	}
-
-	if (view->maximized == VIEW_AXIS_BOTH) {
-		return;
-	} else if (!ssd->border.tree->node.enabled) {
-		/* And re-enabled them when unmaximized */
+	if (!ssd->border.tree->node.enabled) {
 		wlr_scene_node_set_enabled(&ssd->border.tree->node, true);
-		ssd->margin = ssd_thickness(ssd->view);
 	}
+	ssd->margin = ssd_thickness(ssd->view);
 
 	struct theme *theme = rc.theme;
 
@@ -152,6 +197,22 @@ ssd_border_update(struct ssd *ssd)
 			top_width, theme->border_width);
 		wlr_scene_node_set_position(&subtree->top->node,
 			top_x, -(ssd->titlebar.height + theme->border_width));
+
+		wlr_scene_rect_set_size(subtree->separator,
+			full_width, theme->border_width);
+		wlr_scene_node_set_enabled(&subtree->separator->node,
+			ssd->titlebar.height > 0 && !view->shaded);
+	}
+
+	/* Update titlebar drop shadow overlay */
+	if (ssd->titlebar_dropshadow.tree) {
+		wlr_scene_node_set_position(
+			&ssd->titlebar_dropshadow.tree->node,
+			-theme->border_width, 0);
+		wlr_scene_buffer_set_dest_size(ssd->titlebar_dropshadow.buffer,
+			full_width, TITLEBAR_DROPSHADOW_HEIGHT);
+		wlr_scene_node_set_enabled(&ssd->titlebar_dropshadow.tree->node,
+			ssd->titlebar.height > 0 && !view->shaded);
 	}
 }
 
@@ -161,6 +222,11 @@ ssd_border_destroy(struct ssd *ssd)
 	assert(ssd);
 	assert(ssd->border.tree);
 
+	if (ssd->titlebar_dropshadow.tree) {
+		wlr_scene_node_destroy(&ssd->titlebar_dropshadow.tree->node);
+		ssd->titlebar_dropshadow.tree = NULL;
+		ssd->titlebar_dropshadow.buffer = NULL;
+	}
 	wlr_scene_node_destroy(&ssd->border.tree->node);
 	ssd->border = (struct ssd_border_scene){0};
 }

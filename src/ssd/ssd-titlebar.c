@@ -23,6 +23,45 @@ static void set_squared_corners(struct ssd *ssd, bool enable);
 static void set_alt_button_icon(struct ssd *ssd, enum lab_node_type type, bool enable);
 static void update_visible_buttons(struct ssd *ssd);
 
+/* Platinum-style racing stripe constants */
+#define STRIPE_LINE_COUNT 7
+#define STRIPE_H_PAD 4	/* px gap between stripe and adjacent element */
+#define STRIPE_STRIDE 2 /* px between consecutive ridge tops (2 = contiguous) */
+#define STRIPE_V_PAD 1	/* px gap between stripe and adjacent element */
+#define STRIPE_V_INSET_MIN 2 /* minimum px inset from button top/bottom edge */
+#define STRIPE_MIN_WIDTH 7   /* minimum px width to show a stripe region */
+#define STRIPE_HEIGHT (STRIPE_STRIDE * (STRIPE_LINE_COUNT - 1) + 2)
+
+static struct lab_data_buffer *
+get_stripe_buffer(void)
+{
+	static struct lab_data_buffer *buf;
+	if (buf) {
+		return buf;
+	}
+	/*
+	 * 1px wide column containing the full stripe pattern.
+	 * Each ridge is a highlight row (white @ 55%) + shadow row (black @ 80%)
+	 * in premultiplied ARGB format.  Stretched horizontally at render time.
+	 */
+	uint32_t *pixels = xmalloc(STRIPE_HEIGHT * sizeof(*pixels));
+	for (int l = 0; l < STRIPE_LINE_COUNT; l++) {
+		pixels[l * STRIPE_STRIDE]     = 0x8C8C8C8C; /* white 55% */
+		pixels[l * STRIPE_STRIDE + 1] = 0xCC000000; /* black 80% */
+	}
+	buf = buffer_create_from_data(pixels, 1, STRIPE_HEIGHT,
+		sizeof(*pixels));
+	return buf;
+}
+
+enum stripe_region {
+	STRIPE_LEFT,	    /* left edge to left button group */
+	STRIPE_LEFT_TITLE,  /* left button group to title text */
+	STRIPE_RIGHT_TITLE, /* title text to right button group */
+	STRIPE_RIGHT,	    /* right button group to right edge */
+	STRIPE_REGION_COUNT,
+};
+
 void
 ssd_titlebar_create(struct ssd *ssd)
 {
@@ -106,6 +145,34 @@ ssd_titlebar_create(struct ssd *ssd)
 				theme->window[active].button_imgs[type];
 			attach_ssd_button(&subtree->buttons_right, type, parent,
 				imgs, x, y, view);
+		}
+
+		/* Create platinum-style racing stripe regions (3D ridges) */
+		int btn_h = theme->window_button_height;
+		int stripe_v_inset = (btn_h - STRIPE_V_PAD - STRIPE_HEIGHT) / 2;
+		if (stripe_v_inset < STRIPE_V_INSET_MIN)
+			stripe_v_inset = STRIPE_V_INSET_MIN;
+		struct lab_data_buffer *stripe_buf = get_stripe_buffer();
+		for (int r = 0; r < STRIPE_REGION_COUNT; r++) {
+			subtree->stripes[r].tree =
+				lab_wlr_scene_tree_create(parent);
+			wlr_scene_node_set_enabled(
+				&subtree->stripes[r].tree->node, false);
+			subtree->stripes[r].buffer = lab_wlr_scene_buffer_create(
+				subtree->stripes[r].tree, &stripe_buf->base);
+			wlr_scene_node_set_position(
+				&subtree->stripes[r].buffer->node,
+				0, y + stripe_v_inset);
+			/*
+			 * Work around the wlroots/pixman bug that widened
+			 * 1px buffer becomes translucent when bilinear
+			 * filtering is used.
+			 */
+			if (wlr_renderer_is_pixman(server.renderer)) {
+				wlr_scene_buffer_set_filter_mode(
+					subtree->stripes[r].buffer,
+					WLR_SCALE_FILTER_NEAREST);
+			}
 		}
 	}
 
@@ -361,6 +428,63 @@ ssd_titlebar_destroy(struct ssd *ssd)
  * any unnecessary screen damage and makes the code easier to follow.
  */
 
+/*
+ * Update positions and sizes of the Platinum-style racing stripe regions
+ * for a single titlebar subtree.
+ */
+static void
+update_stripes_for_subtree(struct ssd_titlebar_subtree *subtree, int width,
+	int offset_left, int offset_right, int title_x, int title_w,
+	bool title_visible, int padding)
+{
+	struct {
+		int x;
+		int w;
+	} regions[STRIPE_REGION_COUNT];
+
+	/* Left: flush to titlebar left edge, gap before buttons */
+	regions[STRIPE_LEFT].x = 0;
+	regions[STRIPE_LEFT].w = padding - STRIPE_H_PAD;
+
+	if (title_visible && title_w > 0) {
+		/* Left-title: between left buttons and title text */
+		regions[STRIPE_LEFT_TITLE].x = offset_left + STRIPE_H_PAD;
+		regions[STRIPE_LEFT_TITLE].w =
+			title_x - offset_left - 2 * STRIPE_H_PAD;
+
+		/* Right-title: between title text and right buttons */
+		regions[STRIPE_RIGHT_TITLE].x =
+			title_x + title_w + STRIPE_H_PAD;
+		regions[STRIPE_RIGHT_TITLE].w =
+			(width - offset_right - STRIPE_H_PAD)
+			- regions[STRIPE_RIGHT_TITLE].x;
+	} else {
+		/* No title visible: single stripe between button groups */
+		regions[STRIPE_LEFT_TITLE].x = offset_left + STRIPE_H_PAD;
+		regions[STRIPE_LEFT_TITLE].w =
+			width - offset_left - offset_right - 2 * STRIPE_H_PAD;
+		regions[STRIPE_RIGHT_TITLE].x = 0;
+		regions[STRIPE_RIGHT_TITLE].w = 0;
+	}
+
+	/* Right: gap after buttons, flush to titlebar right edge */
+	regions[STRIPE_RIGHT].x = width - padding + STRIPE_H_PAD;
+	regions[STRIPE_RIGHT].w = padding - STRIPE_H_PAD;
+
+	for (int r = 0; r < STRIPE_REGION_COUNT; r++) {
+		bool visible = regions[r].w >= STRIPE_MIN_WIDTH;
+		wlr_scene_node_set_enabled(&subtree->stripes[r].tree->node,
+			visible);
+		if (!visible) {
+			continue;
+		}
+		wlr_scene_node_set_position(&subtree->stripes[r].tree->node,
+			regions[r].x, 0);
+		wlr_scene_buffer_set_dest_size(subtree->stripes[r].buffer,
+			regions[r].w, STRIPE_HEIGHT);
+	}
+}
+
 static void
 ssd_update_title_positions(struct ssd *ssd, int offset_left, int offset_right)
 {
@@ -368,6 +492,7 @@ ssd_update_title_positions(struct ssd *ssd, int offset_left, int offset_right)
 	struct theme *theme = rc.theme;
 	int width = view->current.width;
 	int title_bg_width = width - offset_left - offset_right;
+	int padding = theme->window_titlebar_padding_width;
 
 	enum ssd_active_state active;
 	FOR_EACH_ACTIVE_STATE(active) {
@@ -380,6 +505,11 @@ ssd_update_title_positions(struct ssd *ssd, int offset_left, int offset_right)
 
 		if (title_bg_width <= 0) {
 			wlr_scene_node_set_enabled(&title->scene_buffer->node, false);
+			/* Hide all stripes for this narrow window */
+			for (int r = 0; r < STRIPE_REGION_COUNT; r++) {
+				wlr_scene_node_set_enabled(
+					&subtree->stripes[r].tree->node, false);
+			}
 			continue;
 		}
 		wlr_scene_node_set_enabled(&title->scene_buffer->node, true);
@@ -402,6 +532,10 @@ ssd_update_title_positions(struct ssd *ssd, int offset_left, int offset_right)
 			/* TODO: maybe add some theme x padding here? */
 		}
 		wlr_scene_node_set_position(&title->scene_buffer->node, x, y);
+
+		/* Update racing stripes for this subtree */
+		update_stripes_for_subtree(subtree, width, offset_left,
+			offset_right, x, title->width, true, padding);
 	}
 }
 

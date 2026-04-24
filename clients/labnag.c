@@ -296,7 +296,7 @@ render_message(cairo_t *cairo, struct nag *nag)
 
 static void
 render_details_scroll_button(cairo_t *cairo, struct nag *nag,
-		struct button *button)
+		struct button *button, bool draw_top_border)
 {
 	int text_width, text_height;
 	get_text_size(cairo, nag->conf->font_description, &text_width,
@@ -304,6 +304,7 @@ render_details_scroll_button(cairo_t *cairo, struct nag *nag,
 
 	int border = nag->conf->details_border_thickness;
 	int padding = (nag->conf->button_padding / 3) + 2;
+	int top_inset = draw_top_border ? border : 0;
 
 	cairo_set_source_u32(cairo, nag->conf->details_border_color);
 	cairo_rectangle(cairo, button->x, button->y,
@@ -311,14 +312,15 @@ render_details_scroll_button(cairo_t *cairo, struct nag *nag,
 	cairo_fill(cairo);
 
 	cairo_set_source_u32(cairo, nag->conf->button_background);
-	cairo_rectangle(cairo, button->x + border, button->y + border,
+	cairo_rectangle(cairo, button->x + border, button->y + top_inset,
 			button->width - (border * 2),
-			button->height - (border * 2));
+			button->height - top_inset - border);
 	cairo_fill(cairo);
 
 	cairo_set_source_u32(cairo, nag->conf->button_text);
 	cairo_move_to(cairo, button->x + border + padding,
-			button->y + border + (button->height - text_height) / 2);
+			button->y + top_inset +
++			(button->height - top_inset - border - text_height) / 2);
 	render_text(cairo, nag->conf->font_description, 1, true,
 			"%s", button->text);
 }
@@ -411,7 +413,7 @@ render_detailed(cairo_t *cairo, struct nag *nag, uint32_t y)
 		nag->details.button_up.y = nag->details.y - border;
 		nag->details.button_up.width = button_width;
 		nag->details.button_up.height = (border_rect_height + border) / 2;
-		render_details_scroll_button(cairo, nag, &nag->details.button_up);
+		render_details_scroll_button(cairo, nag, &nag->details.button_up, true);
 
 		nag->details.button_down.x = nag->details.x + nag->details.width;
 		nag->details.button_down.y =
@@ -419,7 +421,7 @@ render_detailed(cairo_t *cairo, struct nag *nag, uint32_t y)
 		nag->details.button_down.width = button_width;
 		nag->details.button_down.height =
 			border_rect_height - nag->details.button_up.height;
-		render_details_scroll_button(cairo, nag, &nag->details.button_down);
+		render_details_scroll_button(cairo, nag, &nag->details.button_down, false);
 	}
 
 	cairo_set_source_u32(cairo, nag->conf->details_border_color);

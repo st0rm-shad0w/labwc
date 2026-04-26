@@ -106,6 +106,12 @@ struct ssd {
 			struct scaled_font_buffer *title;
 			struct wl_list buttons_left; /* ssd_button.link */
 			struct wl_list buttons_right; /* ssd_button.link */
+			/* MacOS 9 style racing stripes: left, left-title, right-title, right */
+			struct {
+				struct wlr_scene_tree *tree;
+				struct wlr_scene_rect *highlight[7];
+				struct wlr_scene_rect *shadow[7];
+			} stripes[4];
 		} subtrees[2]; /* indexed by enum ssd_active_state */
 	} titlebar;
 
@@ -114,9 +120,15 @@ struct ssd {
 		struct wlr_scene_tree *tree;
 		struct ssd_border_subtree {
 			struct wlr_scene_tree *tree;
-			struct wlr_scene_rect *top, *bottom, *left, *right;
+			struct wlr_scene_rect *top, *separator, *bottom, *left, *right;
 		} subtrees[2]; /* indexed by enum ssd_active_state */
 	} border;
+
+	/* Titlebar drop shadow (above content, input-transparent) */
+	struct {
+		struct wlr_scene_tree *tree;
+		struct wlr_scene_buffer *buffer;
+	} titlebar_dropshadow;
 
 	struct ssd_shadow_scene {
 		struct wlr_scene_tree *tree;

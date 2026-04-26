@@ -1242,6 +1242,15 @@ execute_single_command(const char *cmd)
 		return cmd_result(true, NULL);
 	}
 
+	/* --- focus ... --- */
+	if (!strcmp(cmd, "focus")) {
+		if (!target) {
+			return cmd_result(false, "No target for focus");
+		}
+		desktop_focus_view(target, /*raise*/ true);
+		return cmd_result(true, NULL);
+	}
+
 	/* --- move ... --- */
 	if (!strncmp(cmd, "move ", 5)) {
 		const char *arg = cmd + 5;

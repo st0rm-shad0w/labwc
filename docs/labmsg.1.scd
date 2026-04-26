@@ -149,6 +149,9 @@ The following commands are supported:
 	Switch to the named workspace. The special names *next*, *prev*,
 	*next_on_output*, and *prev_on_output* cycle through workspaces.
 
+*focus*
+	Focus the target window and raise it.
+
 *focus output* _<name>_|left|right|up|down
 	Focus the given output by name or direction.
 
@@ -231,6 +234,12 @@ Move a specific window to workspace 2:
 
 ```
 labmsg '[app_id="firefox"] move container to workspace 2'
+```
+
+Focus a specific window:
+
+```
+labmsg '[app_id="firefox"] focus'
 ```
 
 Subscribe to window events:

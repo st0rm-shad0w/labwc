@@ -609,6 +609,29 @@ view_resize_relative(struct view *view, int left, int right, int top, int bottom
 	view_set_untiled(view);
 }
 
+/*
+ * Clamp position so that at least min_visible pixels of a window of given
+ * width/height remain within the usable area of the specified output.
+ */
+static void
+clamp_to_output(struct output *output, int width, int height, int *x, int *y)
+{
+	struct wlr_box ob = output_usable_area_in_layout_coords(output);
+	int min_visible = rc.theme->titlebar_height;
+
+	if (*x + width < ob.x + min_visible) {
+		*x = ob.x + min_visible - width;
+	} else if (*x > ob.x + ob.width - min_visible) {
+		*x = ob.x + ob.width - min_visible;
+	}
+
+	if (*y + height < ob.y + min_visible) {
+		*y = ob.y + min_visible - height;
+	} else if (*y > ob.y + ob.height - min_visible) {
+		*y = ob.y + ob.height - min_visible;
+	}
+}
+
 void
 view_move_relative(struct view *view, int x, int y)
 {
@@ -621,7 +644,19 @@ view_move_relative(struct view *view, int x, int y)
 		view_set_untiled(view);
 		view_move_resize(view, view->natural_geometry);
 	}
-	view_move(view, view->pending.x + x, view->pending.y + y);
+
+	int dest_x = view->pending.x + x;
+	int dest_y = view->pending.y + y;
+
+	struct output *output = output_nearest_to(
+		dest_x + view->pending.width / 2,
+		dest_y + view->pending.height / 2);
+	if (output) {
+		clamp_to_output(output, view->pending.width,
+			view->pending.height, &dest_x, &dest_y);
+	}
+
+	view_move(view, dest_x, dest_y);
 }
 
 static bool

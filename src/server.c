@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #define _POSIX_C_SOURCE 200809L
 #include "config.h"
+#include <fcntl.h>
+#include <libgen.h>
 #include <signal.h>
 #include <string.h>
+#include <sys/inotify.h>
 #include <sys/wait.h>
+#include <unistd.h>
 #include <wlr/backend/headless.h>
 #include <wlr/backend/multi.h>
 #include <wlr/config.h>
@@ -51,6 +55,8 @@
 #endif
 
 #include "action.h"
+#include "common/dir.h"
+#include "common/list.h"
 #include "common/macros.h"
 #include "common/mem.h"
 #include "common/scene-helpers.h"
@@ -82,6 +88,149 @@
 #define LAB_WLR_FRACTIONAL_SCALE_V1_VERSION 1
 #define LAB_WLR_LINUX_DMABUF_VERSION 4
 #define LAB_WLR_PRESENTATION_TIME_VERSION 2
+
+/* Auto-reconfigure config file watcher (any .xml in config dirs) */
+#define CFGWATCH_MAX_WATCHES 8
+#define CFGWATCH_DEBOUNCE_MS 200
+
+static struct {
+	int inotify_fd;
+	struct wl_event_source *inotify_source;
+	struct wl_event_source *debounce_timer;
+	int watches[CFGWATCH_MAX_WATCHES];
+	int watch_count;
+} cfgwatch = { .inotify_fd = -1 };
+
+static void
+cfgwatch_finish(void)
+{
+	if (cfgwatch.inotify_fd < 0) {
+		return;
+	}
+	if (cfgwatch.debounce_timer) {
+		wl_event_source_remove(cfgwatch.debounce_timer);
+		cfgwatch.debounce_timer = NULL;
+	}
+	if (cfgwatch.inotify_source) {
+		wl_event_source_remove(cfgwatch.inotify_source);
+		cfgwatch.inotify_source = NULL;
+	}
+	cfgwatch.watch_count = 0;
+	close(cfgwatch.inotify_fd);
+	cfgwatch.inotify_fd = -1;
+}
+
+static int
+handle_cfgwatch_debounce(void *data)
+{
+	kill(getpid(), SIGHUP);
+	return 0;
+}
+
+static int
+handle_inotify_event(int fd, uint32_t mask, void *data)
+{
+	char buf[4096]
+		__attribute__((aligned(__alignof__(struct inotify_event))));
+
+	ssize_t len = read(cfgwatch.inotify_fd, buf, sizeof(buf));
+	if (len <= 0) {
+		return 0;
+	}
+
+	bool matched = false;
+	for (char *ptr = buf; ptr < buf + len; ) {
+		struct inotify_event *event = (struct inotify_event *)ptr;
+		if (event->len > 0) {
+			const char *name = event->name;
+			size_t nlen = strlen(name);
+			if (nlen > 4
+					&& !strcmp(name + nlen - 4, ".xml")) {
+				matched = true;
+			}
+		}
+		ptr += sizeof(struct inotify_event) + event->len;
+	}
+
+	if (matched) {
+		wl_event_source_timer_update(
+			cfgwatch.debounce_timer, CFGWATCH_DEBOUNCE_MS);
+	}
+	return 0;
+}
+
+static void
+cfgwatch_init(void)
+{
+	if (!rc.auto_reconfigure) {
+		return;
+	}
+
+	cfgwatch.inotify_fd = inotify_init();
+	if (cfgwatch.inotify_fd < 0) {
+		wlr_log(WLR_ERROR,
+			"inotify_init failed for auto-reconfigure");
+		return;
+	}
+
+	/* Set non-blocking and close-on-exec */
+	int flags = fcntl(cfgwatch.inotify_fd, F_GETFD);
+	fcntl(cfgwatch.inotify_fd, F_SETFD, flags | FD_CLOEXEC);
+	flags = fcntl(cfgwatch.inotify_fd, F_GETFL);
+	fcntl(cfgwatch.inotify_fd, F_SETFL, flags | O_NONBLOCK);
+
+	struct wl_list paths;
+	if (rc.config_file) {
+		wl_list_init(&paths);
+		struct path *p = znew(*p);
+		p->string = xstrdup(rc.config_file);
+		wl_list_append(&paths, &p->link);
+	} else {
+		paths_config_create(&paths, "rc.xml");
+	}
+
+	cfgwatch.watch_count = 0;
+	struct path *p;
+	wl_list_for_each(p, &paths, link) {
+		if (cfgwatch.watch_count >= CFGWATCH_MAX_WATCHES) {
+			break;
+		}
+
+		/* dirname may modify the string, so use a copy */
+		char *dir_tmp = xstrdup(p->string);
+		char *dir = dirname(dir_tmp);
+
+		int wd = inotify_add_watch(cfgwatch.inotify_fd, dir,
+			IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE);
+		if (wd < 0) {
+			wlr_log(WLR_DEBUG,
+				"auto-reconfigure: cannot watch %s", dir);
+			free(dir_tmp);
+			continue;
+		}
+
+		cfgwatch.watches[cfgwatch.watch_count] = wd;
+		cfgwatch.watch_count++;
+
+		wlr_log(WLR_DEBUG,
+			"auto-reconfigure: watching %s for *.xml", dir);
+
+		free(dir_tmp);
+	}
+	paths_destroy(&paths);
+
+	if (cfgwatch.watch_count == 0) {
+		close(cfgwatch.inotify_fd);
+		cfgwatch.inotify_fd = -1;
+		return;
+	}
+
+	cfgwatch.inotify_source = wl_event_loop_add_fd(
+		server.wl_event_loop, cfgwatch.inotify_fd,
+		WL_EVENT_READABLE, handle_inotify_event, NULL);
+	cfgwatch.debounce_timer = wl_event_loop_add_timer(
+		server.wl_event_loop, handle_cfgwatch_debounce, NULL);
+}
 
 static void
 reload_config_and_theme(void)
@@ -118,6 +267,10 @@ reload_config_and_theme(void)
 	resize_indicator_reconfigure();
 	kde_server_decoration_update_default();
 	workspaces_reconfigure();
+
+	/* Re-establish file watcher in case option was toggled */
+	cfgwatch_finish();
+	cfgwatch_init();
 }
 
 static int
@@ -436,6 +589,9 @@ server_init(void)
 		server.wl_event_loop, SIGTERM, handle_sigterm, server.wl_display);
 	server.sigchld_source = wl_event_loop_add_signal(
 		server.wl_event_loop, SIGCHLD, handle_sigchld, NULL);
+
+	/* Watch config files for changes if auto-reconfigure is enabled */
+	cfgwatch_init();
 
 	/*
 	 * Prevent wayland clients that request the X11 clipboard but closing
@@ -802,6 +958,7 @@ server_finish(void)
 #if HAVE_LIBSFDO
 	desktop_entry_finish();
 #endif
+	cfgwatch_finish();
 	wl_event_source_remove(server.sighup_source);
 	wl_event_source_remove(server.sigint_source);
 	wl_event_source_remove(server.sigterm_source);

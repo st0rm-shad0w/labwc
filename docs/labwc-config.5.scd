@@ -267,6 +267,12 @@ this is for compatibility with Openbox.
 	up/down) in Chromium and electron based clients without inadvertently
 	pasting the primary clipboard. Default is yes.
 
+*<core><autoReconfigure>* [yes|no]
+	Automatically reconfigure when XML configuration files (such as
+	rc.xml or menu.xml) are modified. Uses inotify to detect file changes
+	and triggers a reconfigure after a short debounce period. Default is
+	no.
+
 *<core><promptCommand>*
 	Set command to be invoked for an action prompt (*<action><prompt>*)
 

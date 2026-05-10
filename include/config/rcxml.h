@@ -86,6 +86,7 @@ struct rcxml {
 	uint32_t allowed_interfaces;
 	bool xwayland_persistence;
 	bool primary_selection;
+	bool auto_reconfigure;
 	char *prompt_command;
 
 	/* placement */

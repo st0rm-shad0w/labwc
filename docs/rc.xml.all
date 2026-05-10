@@ -17,6 +17,7 @@
     <reuseOutputMode>no</reuseOutputMode>
     <xwaylandPersistence>no</xwaylandPersistence>
     <primarySelection>yes</primarySelection>
+    <autoReconfigure>no</autoReconfigure>
     <!--
       # See labwc-config(5) for details
       <promptCommand></promptCommand>

@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <wayland-server-core.h>
 #include <wlr/util/box.h>
+#include <wlr/util/log.h>
 #include <libxml/tree.h>
 
 #include "common/border.h"
@@ -227,6 +228,53 @@ extern struct rcxml rc;
 
 void rcxml_read(const char *filename);
 void rcxml_finish(void);
+
+/**
+ * config_error_init - install custom log callback that captures config errors.
+ * Must be called instead of wlr_log_init().
+ * @verbosity: log importance threshold (WLR_ERROR, WLR_INFO, WLR_DEBUG)
+ */
+void config_error_init(enum wlr_log_importance verbosity);
+
+/**
+ * config_error_clear - clear any previously buffered error messages.
+ * Call before the first config_error_capture_start() in a load/reload cycle.
+ */
+void config_error_clear(void);
+
+/**
+ * config_error_capture_start - begin buffering config error messages.
+ * Call before parsing a config file (rcxml_read, menu_init, etc.).
+ * Does not clear the buffer; call config_error_clear() first if needed.
+ */
+void config_error_capture_start(void);
+
+/**
+ * config_error_capture_stop - stop buffering config error messages.
+ * Call after parsing a config file.
+ */
+void config_error_capture_stop(void);
+
+/**
+ * config_error_set_file - set the config file path for error messages.
+ * @path: path to the config file currently being parsed (not copied;
+ *        must remain valid for the duration of parsing)
+ */
+void config_error_set_file(const char *path);
+
+/**
+ * config_error_set_node - set the current XML node for error messages.
+ * @node: pointer to the XML node currently being processed
+ */
+void config_error_set_node(xmlNode *node);
+
+/**
+ * config_error_show_labnag - display captured errors via labnag.
+ * If errors were captured, spawns labnag with the error text piped to stdin.
+ * If no errors and a previous config-error labnag is running, kills it.
+ * Must be called after the Wayland server is running.
+ */
+void config_error_show_labnag(void);
 
 /*
  * Parse the child <action> nodes and append them to the list.

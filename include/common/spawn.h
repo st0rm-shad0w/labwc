@@ -44,4 +44,16 @@ pid_t spawn_piped(const char *command, int *pipe_fd);
  */
 void spawn_piped_close(pid_t pid, int pipe_fd);
 
+/**
+ * spawn_write_to_stdin - execute command with data piped to its stdin
+ * @command: shell command to be executed
+ * @data: data to write to child's stdin
+ * @len: length of data in bytes
+ *
+ * Forks a child process, pipes @data to its stdin, then closes the
+ * write end so the child sees EOF. Returns the child PID or -1 on error.
+ * The returned pid_t will be reaped by the generic SIGCHLD handler.
+ */
+pid_t spawn_write_to_stdin(const char *command, const char *data, size_t len);
+
 #endif /* LABWC_SPAWN_H */

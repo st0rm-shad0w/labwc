@@ -228,3 +228,66 @@ spawn_piped_close(pid_t pid, int pipe_fd)
 	close(pipe_fd);
 	/* waitpid() is done in a generic SIGCHLD handler in src/server.c */
 }
+
+pid_t
+spawn_write_to_stdin(const char *command, const char *data, size_t len)
+{
+	assert(command);
+
+	int pipe_rw[2];
+	if (pipe(pipe_rw) != 0) {
+		wlr_log(WLR_ERROR, "unable to pipe()");
+		return -1;
+	}
+
+	pid_t pid = fork();
+	if (pid < 0) {
+		close(pipe_rw[0]);
+		close(pipe_rw[1]);
+		wlr_log(WLR_ERROR, "unable to fork()");
+		return pid;
+	}
+
+	if (pid == 0) {
+		/* child */
+		reset_signals_and_limits();
+
+		/*
+		 * Replace stdin with the read end of the pipe
+		 * and redirect stdout/stderr to /dev/null.
+		 */
+		dup2(pipe_rw[0], STDIN_FILENO);
+		close(pipe_rw[0]);
+		close(pipe_rw[1]);
+
+		int dev_null = open("/dev/null", O_RDWR);
+		if (dev_null < 0) {
+			wlr_log_errno(WLR_ERROR, "opening /dev/null failed");
+			close(STDOUT_FILENO);
+			close(STDERR_FILENO);
+		} else {
+			dup2(dev_null, STDOUT_FILENO);
+			dup2(dev_null, STDERR_FILENO);
+			close(dev_null);
+		}
+
+		execl("/bin/sh", "sh", "-c", command, NULL);
+		_exit(1);
+	}
+
+	/* parent: write data to pipe and close */
+	close(pipe_rw[0]);
+	if (data && len > 0) {
+		ssize_t written = 0;
+		while ((size_t)written < len) {
+			ssize_t n = write(pipe_rw[1], data + written,
+				len - written);
+			if (n <= 0) {
+				break;
+			}
+			written += n;
+		}
+	}
+	close(pipe_rw[1]); /* signals EOF to child */
+	return pid;
+}

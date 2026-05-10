@@ -97,7 +97,10 @@ reload_config_and_theme(void)
 
 	scaled_buffer_invalidate_sharing();
 	rcxml_finish();
+	config_error_clear();
+	config_error_capture_start();
 	rcxml_read(rc.config_file);
+	config_error_capture_stop();
 	theme_finish(rc.theme);
 	theme_init(rc.theme, rc.theme_name);
 
@@ -112,7 +115,10 @@ reload_config_and_theme(void)
 	}
 
 	cycle_finish(/*switch_focus*/ false);
+	config_error_capture_start();
 	menu_reconfigure();
+	config_error_capture_stop();
+	config_error_show_labnag();
 	seat_reconfigure();
 	regions_reconfigure();
 	resize_indicator_reconfigure();

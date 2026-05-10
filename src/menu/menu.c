@@ -592,7 +592,7 @@ item_destroy(struct menuitem *item)
 	free(item);
 }
 
-static bool parse_buf(struct menu *menu, struct buf *buf);
+static bool parse_buf(struct menu *menu, struct buf *buf, const char *filename);
 static int handle_pipemenu_readable(int fd, uint32_t mask, void *_ctx);
 static int handle_pipemenu_timeout(void *_ctx);
 static void fill_menu_children(struct menu *parent, xmlNode *n);
@@ -750,10 +750,10 @@ fill_menu_children(struct menu *parent, xmlNode *n)
 }
 
 static bool
-parse_buf(struct menu *parent, struct buf *buf)
+parse_buf(struct menu *parent, struct buf *buf, const char *filename)
 {
 	int options = 0;
-	xmlDoc *d = xmlReadMemory(buf->data, buf->len, NULL, NULL, options);
+	xmlDoc *d = xmlReadMemory(buf->data, buf->len, filename, NULL, options);
 	if (!d) {
 		wlr_log(WLR_ERROR, "xmlParseMemory()");
 		return false;
@@ -784,7 +784,8 @@ parse_xml(const char *filename)
 			continue;
 		}
 		wlr_log(WLR_INFO, "read menu file %s", path->string);
-		parse_buf(/*parent*/ NULL, &buf);
+		config_error_set_file(path->string);
+		parse_buf(/*parent*/ NULL, &buf, path->string);
 		buf_reset(&buf);
 		if (!should_merge_config) {
 			break;
@@ -1290,7 +1291,7 @@ menu_open_root(struct menu *menu, int x, int y)
 static void
 create_pipe_menu(struct menu_pipe_context *ctx)
 {
-	if (!parse_buf(ctx->pipemenu, &ctx->buf)) {
+	if (!parse_buf(ctx->pipemenu, &ctx->buf, NULL)) {
 		return;
 	}
 	/* TODO: apply validate() only for generated pipemenus */

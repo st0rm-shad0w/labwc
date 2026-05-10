@@ -163,6 +163,8 @@ idle_callback(void *data)
 	if (ctx->startup_cmd) {
 		spawn_async_no_shell(ctx->startup_cmd);
 	}
+
+	config_error_show_labnag();
 }
 
 int
@@ -228,7 +230,7 @@ main(int argc, char *argv[])
 		usage();
 	}
 
-	wlr_log_init(verbosity, NULL);
+	config_error_init(verbosity);
 
 	die_on_detecting_suid();
 	die_on_no_fonts();
@@ -242,7 +244,10 @@ main(int argc, char *argv[])
 	textdomain(GETTEXT_PACKAGE);
 #endif
 
+	config_error_clear();
+	config_error_capture_start();
 	rcxml_read(rc.config_file);
+	config_error_capture_stop();
 
 	/*
 	 * Set environment variable LABWC_PID to the pid of the compositor
@@ -282,7 +287,9 @@ main(int argc, char *argv[])
 	theme_init(&theme, rc.theme_name);
 	rc.theme = &theme;
 
+	config_error_capture_start();
 	menu_init();
+	config_error_capture_stop();
 
 	/* Delay startup of applications until the event loop is ready */
 	struct idle_ctx idle_ctx = {

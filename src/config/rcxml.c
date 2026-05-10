@@ -4,6 +4,9 @@
 #include <assert.h>
 #include <glib.h>
 #include <libxml/parser.h>
+#include <libxml/xmlerror.h>
+#include <signal.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +23,7 @@
 #include "common/nodename.h"
 #include "common/parse-bool.h"
 #include "common/parse-double.h"
+#include "common/spawn.h"
 #include "common/string-helpers.h"
 #include "common/xml.h"
 #include "config/default-bindings.h"
@@ -1462,6 +1466,7 @@ traverse(xmlNode *node)
 	char *key, *content;
 	LAB_XML_FOR_EACH(node, child, key, content) {
 		(void)key;
+		config_error_set_node(child);
 		char buffer[256];
 		char *name = nodename(child, buffer, sizeof(buffer));
 		if (entry(child, name, content)) {
@@ -1471,10 +1476,10 @@ traverse(xmlNode *node)
 }
 
 static void
-rcxml_parse_xml(struct buf *b)
+rcxml_parse_xml(struct buf *b, const char *filename)
 {
 	int options = 0;
-	xmlDoc *d = xmlReadMemory(b->data, b->len, NULL, NULL, options);
+	xmlDoc *d = xmlReadMemory(b->data, b->len, filename, NULL, options);
 	if (!d) {
 		wlr_log(WLR_ERROR, "error parsing config file");
 		return;
@@ -2032,7 +2037,8 @@ rcxml_read(const char *filename)
 
 		wlr_log(WLR_INFO, "read config file %s", path->string);
 
-		rcxml_parse_xml(&b);
+		config_error_set_file(path->string);
+		rcxml_parse_xml(&b, path->string);
 		buf_reset(&b);
 		if (!should_merge_config) {
 			break;
@@ -2116,4 +2122,150 @@ rcxml_finish(void)
 
 	/* Reset state vars for starting fresh when Reload is triggered */
 	mouse_scroll_factor = -1;
+}
+
+/* ---- Config error capture and labnag display ---- */
+
+static struct buf config_error_buf = BUF_INIT;
+static bool config_error_capturing;
+static pid_t config_error_labnag_pid;
+static enum wlr_log_importance config_error_verbosity;
+static const char *config_error_current_file;
+static xmlNode *config_error_current_node;
+
+static const char *
+importance_str(enum wlr_log_importance importance)
+{
+	switch (importance) {
+	case WLR_ERROR:
+		return "ERROR";
+	case WLR_INFO:
+		return "INFO";
+	case WLR_DEBUG:
+		return "DEBUG";
+	default:
+		return "?";
+	}
+}
+
+static void
+custom_log_callback(enum wlr_log_importance importance,
+	const char *fmt, va_list args)
+{
+	/* Respect configured verbosity threshold */
+	if (importance > config_error_verbosity) {
+		return;
+	}
+
+	/* Always print to stderr (replicating default wlr_log behavior) */
+	va_list args_copy;
+	va_copy(args_copy, args);
+
+	fprintf(stderr, "[%s] ", importance_str(importance));
+	vfprintf(stderr, fmt, args);
+	fprintf(stderr, "\n");
+
+	/* Buffer WLR_ERROR messages when capturing is active */
+	if (config_error_capturing && importance == WLR_ERROR) {
+		char msg[1024];
+		vsnprintf(msg, sizeof(msg), fmt, args_copy);
+		if (config_error_current_node && config_error_current_file) {
+			long line = xmlGetLineNo(config_error_current_node);
+			buf_add_fmt(&config_error_buf, "%s:%ld: %s\n",
+				config_error_current_file, line, msg);
+		} else {
+			buf_add(&config_error_buf, msg);
+			buf_add_char(&config_error_buf, '\n');
+		}
+	}
+	va_end(args_copy);
+}
+
+static void
+libxml2_structured_error_handler(void *ctx, const xmlError *err)
+{
+	if (!config_error_capturing || !err || !err->message) {
+		return;
+	}
+
+	const char *file = config_error_current_file
+		? config_error_current_file
+		: (err->file ? err->file : "<unknown>");
+
+	/* Also print to stderr so terminal users see it */
+	fprintf(stderr, "[libxml2] %s:%d: %s", file, err->line, err->message);
+
+	buf_add_fmt(&config_error_buf, "%s:%d: %s",
+		file, err->line, err->message);
+}
+
+void
+config_error_init(enum wlr_log_importance verbosity)
+{
+	config_error_verbosity = verbosity;
+	wlr_log_init(verbosity, custom_log_callback);
+}
+
+void
+config_error_clear(void)
+{
+	buf_clear(&config_error_buf);
+}
+
+void
+config_error_set_file(const char *path)
+{
+	config_error_current_file = path;
+}
+
+void
+config_error_set_node(xmlNode *node)
+{
+	config_error_current_node = node;
+}
+
+void
+config_error_capture_start(void)
+{
+	config_error_capturing = true;
+	xmlSetStructuredErrorFunc(NULL, libxml2_structured_error_handler);
+}
+
+void
+config_error_capture_stop(void)
+{
+	config_error_capturing = false;
+	xmlSetStructuredErrorFunc(NULL, NULL);
+	config_error_current_node = NULL;
+}
+
+void
+config_error_show_labnag(void)
+{
+	/* Kill any previously spawned config-error labnag */
+	if (config_error_labnag_pid > 0) {
+		kill(config_error_labnag_pid, SIGTERM);
+		config_error_labnag_pid = 0;
+	}
+
+	if (!config_error_buf.len) {
+		return;
+	}
+
+	static const char cmd[] =
+		"labnag --timeout 0"
+		" --edge 'top'"
+		" --layer 'overlay'"
+		" --exclusive-zone"
+		" --message 'Errors found in configuration files'"
+		" --detailed-message"
+		" --detailed-button 'Show errors'";
+
+	config_error_labnag_pid = spawn_write_to_stdin(
+		cmd, config_error_buf.data, config_error_buf.len);
+
+	if (config_error_labnag_pid < 0) {
+		wlr_log(WLR_ERROR, "failed to spawn labnag for config errors");
+		config_error_labnag_pid = 0;
+	}
 }

@@ -3,6 +3,10 @@
 #include <assert.h>
 #include <strings.h>
 #include <wlr/types/wlr_cursor.h>
+
+#if HAVE_PLUGINS
+#include "plugin/events.h"
+#endif
 #include <wlr/types/wlr_keyboard_group.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
@@ -502,6 +506,19 @@ void
 view_close(struct view *view)
 {
 	assert(view);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_REQUEST_CLOSE },
+			.view = view,
+		};
+		if (plugin_events_emit(LABWC_EVENT_VIEW_REQUEST_CLOSE, &ev)) {
+			return;
+		}
+	}
+#endif
+
 	if (view->impl->close) {
 		view->impl->close(view);
 	}
@@ -567,6 +584,16 @@ view_moved(struct view *view)
 	if (rc.resize_indicator && server.grabbed_view == view) {
 		resize_indicator_update(view);
 	}
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_MOVED },
+			.view = view,
+		};
+		plugin_events_emit(LABWC_EVENT_VIEW_MOVED, &ev);
+	}
+#endif
 }
 
 void
@@ -740,6 +767,17 @@ _minimize(struct view *view, bool minimized, bool *need_refocus)
 
 	view->minimized = minimized;
 	wl_signal_emit_mutable(&view->events.minimized, NULL);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_MINIMIZED },
+			.view = view,
+		};
+		plugin_events_emit(LABWC_EVENT_VIEW_MINIMIZED, &ev);
+	}
+#endif
+
 	view_update_visibility(view);
 
 	/*
@@ -951,10 +989,30 @@ view_effective_height(struct view *view, bool use_pending)
 	assert(view);
 
 	if (view->shaded) {
+#if HAVE_PLUGINS
+		if (!view->plugin_shade_horizontal) {
+			return 0;
+		}
+#else
 		return 0;
+#endif
 	}
 
 	return use_pending ? view->pending.height : view->current.height;
+}
+
+int
+view_effective_width(struct view *view, bool use_pending)
+{
+	assert(view);
+
+#if HAVE_PLUGINS
+	if (view->shaded && view->plugin_shade_horizontal) {
+		return 0;
+	}
+#endif
+
+	return use_pending ? view->pending.width : view->current.width;
 }
 
 void
@@ -1341,6 +1399,16 @@ view_set_maximized(struct view *view, enum view_axis maximized)
 	view->maximized = maximized;
 	wl_signal_emit_mutable(&view->events.maximized, NULL);
 
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_MAXIMIZED },
+			.view = view,
+		};
+		plugin_events_emit(LABWC_EVENT_VIEW_MAXIMIZED, &ev);
+	}
+#endif
+
 	/*
 	 * Ensure that follow-up actions like SnapToEdge / SnapToRegion
 	 * use up-to-date SSD margin information. Otherwise we will end
@@ -1551,6 +1619,16 @@ view_set_layer(struct view *view, enum view_layer layer)
 		view->workspace->view_trees[layer]);
 
 	wl_signal_emit_mutable(&view->events.always_on_top, NULL);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_ALWAYS_ON_TOP },
+			.view = view,
+		};
+		plugin_events_emit(LABWC_EVENT_VIEW_ALWAYS_ON_TOP, &ev);
+	}
+#endif
 }
 
 void
@@ -1581,6 +1659,16 @@ view_toggle_visible_on_all_workspaces(struct view *view)
 	assert(view);
 	view->visible_on_all_workspaces = !view->visible_on_all_workspaces;
 	ssd_update_geometry(view->ssd);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_WORKSPACE_CHANGED },
+			.view = view,
+		};
+		plugin_events_emit(LABWC_EVENT_VIEW_WORKSPACE_CHANGED, &ev);
+	}
+#endif
 }
 
 void
@@ -1592,6 +1680,16 @@ view_move_to_workspace(struct view *view, struct workspace *workspace)
 		view->workspace = workspace;
 		wlr_scene_node_reparent(&view->scene_tree->node,
 			workspace->view_trees[view->layer]);
+
+#if HAVE_PLUGINS
+		{
+			struct labwc_event_view ev = {
+				.base = { .type = LABWC_EVENT_VIEW_WORKSPACE_CHANGED },
+				.view = view,
+			};
+			plugin_events_emit(LABWC_EVENT_VIEW_WORKSPACE_CHANGED, &ev);
+		}
+#endif
 	}
 }
 
@@ -1614,6 +1712,11 @@ undecorate(struct view *view)
 bool
 view_titlebar_visible(struct view *view)
 {
+#if HAVE_PLUGINS
+	if (view->plugin_titlebar_hidden) {
+		return false;
+	}
+#endif
 	if (view->maximized == VIEW_AXIS_BOTH
 			&& rc.hide_maximized_window_titlebar) {
 		return false;
@@ -1677,6 +1780,16 @@ set_fullscreen(struct view *view, bool fullscreen)
 
 	view->fullscreen = fullscreen;
 	wl_signal_emit_mutable(&view->events.fullscreened, NULL);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_FULLSCREENED },
+			.view = view,
+		};
+		plugin_events_emit(LABWC_EVENT_VIEW_FULLSCREENED, &ev);
+	}
+#endif
 
 	/* Re-show decorations when no longer fullscreen */
 	if (!fullscreen && view->ssd_mode) {
@@ -2301,6 +2414,16 @@ view_set_title(struct view *view, const char *title)
 
 	ssd_update_title(view->ssd);
 	wl_signal_emit_mutable(&view->events.new_title, NULL);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_TITLE_CHANGE },
+			.view = view,
+		};
+		plugin_events_emit(LABWC_EVENT_VIEW_TITLE_CHANGE, &ev);
+	}
+#endif
 }
 
 void
@@ -2317,6 +2440,16 @@ view_set_app_id(struct view *view, const char *app_id)
 	xstrdup_replace(view->app_id, app_id);
 
 	wl_signal_emit_mutable(&view->events.new_app_id, NULL);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_APP_ID_CHANGE },
+			.view = view,
+		};
+		plugin_events_emit(LABWC_EVENT_VIEW_APP_ID_CHANGE, &ev);
+	}
+#endif
 }
 
 void
@@ -2420,7 +2553,17 @@ view_set_shade(struct view *view, bool shaded)
 
 	/* Views without a title-bar or SSD cannot be shaded */
 	if (shaded && (!view->ssd || !view_titlebar_visible(view))) {
+#if HAVE_PLUGINS
+		/*
+		 * A plugin with a margin override provides a replacement
+		 * titlebar (e.g. side titlebar), so allow shading.
+		 */
+		if (!view->plugin_margin_override.fn) {
+			return;
+		}
+#else
 		return;
+#endif
 	}
 
 	/* If this window is being resized, cancel the resize when shading */
@@ -2439,6 +2582,22 @@ view_set_shade(struct view *view, bool shaded)
 		wlr_scene_node_set_enabled(&view->content_tree->node,
 			!view->shaded);
 	}
+
+#if HAVE_PLUGINS
+	/*
+	 * Notify plugins that the view's effective geometry changed.
+	 * view->current is unchanged but view_effective_height() now
+	 * returns 0 (or the full height), so plugins that draw custom
+	 * decorations can adjust their layout.
+	 */
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_RESIZED },
+			.view = view,
+		};
+		plugin_events_emit(LABWC_EVENT_VIEW_RESIZED, &ev);
+	}
+#endif
 }
 
 void
@@ -2480,6 +2639,10 @@ view_init(struct view *view)
 	wl_signal_init(&view->events.set_icon);
 	wl_signal_init(&view->events.destroy);
 
+#if HAVE_PLUGINS
+	wl_list_init(&view->plugin_data);
+#endif
+
 	view->title = xstrdup("");
 	view->app_id = xstrdup("");
 }
@@ -2488,6 +2651,16 @@ void
 view_destroy(struct view *view)
 {
 	assert(view);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_DESTROY },
+			.view = view,
+		};
+		plugin_events_emit(LABWC_EVENT_VIEW_DESTROY, &ev);
+	}
+#endif
 
 	wl_signal_emit_mutable(&view->events.destroy, NULL);
 	snap_constraints_invalidate(view);

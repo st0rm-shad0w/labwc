@@ -11,6 +11,7 @@
 #include "common/font.h"
 #include "common/node-type.h"
 #include "config/types.h"
+#include "config.h"
 
 #define BUTTON_MAP_MAX 16
 
@@ -67,6 +68,15 @@ struct workspace_config {
 	struct wl_list link; /* struct rcxml.workspace_config.workspaces */
 	char *name;
 };
+
+#if HAVE_PLUGINS
+struct plugin_config_entry {
+	struct wl_list link;   /* struct rcxml.plugins */
+	char *name;            /* plugin name (from name= attribute) */
+	char *path;            /* explicit .so path (from path= attribute) */
+	char *config_xml;      /* serialized XML of <plugin> children */
+};
+#endif
 
 struct rcxml {
 	/* from command line */
@@ -220,6 +230,10 @@ struct rcxml {
 	float mag_scale;
 	float mag_increment;
 	bool mag_filter;
+
+#if HAVE_PLUGINS
+	struct wl_list plugins;  /* struct plugin_config_entry.link */
+#endif
 };
 
 /* defined in main.c */

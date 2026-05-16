@@ -25,6 +25,10 @@
 #include "window-rules.h"
 #include "workspaces.h"
 
+#if HAVE_PLUGINS
+#include "plugin/events.h"
+#endif
+
 static void set_surface(struct view *view, struct wlr_surface *surface);
 static void handle_map(struct wl_listener *listener, void *data);
 static void handle_unmap(struct wl_listener *listener, void *data);
@@ -320,6 +324,19 @@ handle_request_move(struct wl_listener *listener, void *data)
 	 * Note: interactive_begin() checks that view == server.grabbed_view.
 	 */
 	struct view *view = wl_container_of(listener, view, request_move);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_REQUEST_MOVE },
+			.view = view,
+		};
+		if (plugin_events_emit(LABWC_EVENT_VIEW_REQUEST_MOVE, &ev)) {
+			return;
+		}
+	}
+#endif
+
 	interactive_begin(view, LAB_INPUT_STATE_MOVE, LAB_EDGE_NONE);
 }
 
@@ -338,6 +355,19 @@ handle_request_resize(struct wl_listener *listener, void *data)
 	 */
 	struct wlr_xwayland_resize_event *event = data;
 	struct view *view = wl_container_of(listener, view, request_resize);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_REQUEST_RESIZE },
+			.view = view,
+		};
+		if (plugin_events_emit(LABWC_EVENT_VIEW_REQUEST_RESIZE, &ev)) {
+			return;
+		}
+	}
+#endif
+
 	interactive_begin(view, LAB_INPUT_STATE_RESIZE, event->edges);
 }
 
@@ -541,6 +571,19 @@ handle_request_minimize(struct wl_listener *listener, void *data)
 {
 	struct wlr_xwayland_minimize_event *event = data;
 	struct view *view = wl_container_of(listener, view, request_minimize);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_REQUEST_MINIMIZE },
+			.view = view,
+		};
+		if (plugin_events_emit(LABWC_EVENT_VIEW_REQUEST_MINIMIZE, &ev)) {
+			return;
+		}
+	}
+#endif
+
 	view_minimize(view, event->minimize);
 }
 
@@ -552,6 +595,18 @@ handle_request_maximize(struct wl_listener *listener, void *data)
 	if (!view->mapped) {
 		ensure_initial_geometry_and_output(view);
 	}
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_REQUEST_MAXIMIZE },
+			.view = view,
+		};
+		if (plugin_events_emit(LABWC_EVENT_VIEW_REQUEST_MAXIMIZE, &ev)) {
+			return;
+		}
+	}
+#endif
 
 	enum view_axis maximize = VIEW_AXIS_NONE;
 	if (surf->maximized_vert) {
@@ -571,6 +626,19 @@ handle_request_fullscreen(struct wl_listener *listener, void *data)
 	if (!view->mapped) {
 		ensure_initial_geometry_and_output(view);
 	}
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_REQUEST_FULLSCREEN },
+			.view = view,
+		};
+		if (plugin_events_emit(LABWC_EVENT_VIEW_REQUEST_FULLSCREEN, &ev)) {
+			return;
+		}
+	}
+#endif
+
 	view_set_fullscreen(view, fullscreen);
 }
 

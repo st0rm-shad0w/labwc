@@ -8,3 +8,4 @@ option('systemd-session', type: 'feature', value: 'auto', description: 'Install 
 option('static_analyzer', type: 'feature', value: 'disabled', description: 'Run gcc static analyzer')
 option('test', type: 'feature', value: 'disabled', description: 'Run tests')
 option('sections', type: 'feature', value: 'disabled', description: 'Show unused functions')
+option('plugins', type: 'feature', value: 'enabled', description: 'Enable plugin system')

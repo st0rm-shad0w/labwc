@@ -168,6 +168,9 @@ struct ssd_button *attach_ssd_button(struct wl_list *button_parts,
 	struct lab_img *imgs[LAB_BS_ALL + 1], int x, int y,
 	struct view *view);
 
+void ssd_button_update_state(struct ssd_button *button,
+	enum lab_button_state state, bool enable);
+
 /* SSD internal */
 void ssd_titlebar_create(struct ssd *ssd);
 void ssd_titlebar_update(struct ssd *ssd);

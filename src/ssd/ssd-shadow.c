@@ -147,7 +147,7 @@ set_shadow_geometry(struct ssd *ssd)
 	struct view *view = ssd->view;
 	struct theme *theme = rc.theme;
 	int titlebar_height = ssd->titlebar.height;
-	int width = view->current.width;
+	int width = view_effective_width(view, false);
 	int height = view_effective_height(view, false) + titlebar_height;
 
 	enum ssd_active_state active;

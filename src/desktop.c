@@ -2,6 +2,10 @@
 #include "config.h"
 #include <assert.h>
 #include <wlr/types/wlr_cursor.h>
+
+#if HAVE_PLUGINS
+#include "plugin/events.h"
+#endif
 #include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
@@ -169,6 +173,16 @@ desktop_focus_view_internal(struct view *view, bool raise, bool allow_delay)
 	set_or_offer_focus(dialog ? dialog : view);
 
 	show_desktop_reset();
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_FOCUS },
+			.view = view,
+		};
+		plugin_events_emit(LABWC_EVENT_VIEW_FOCUS, &ev);
+	}
+#endif
 }
 
 void

@@ -9,6 +9,11 @@
 #include "magnifier.h"
 #include "output.h"
 
+#if HAVE_PLUGINS
+#include "plugin/events.h"
+#include "labwc.h"
+#endif
+
 struct wlr_surface *
 lab_wlr_surface_from_node(struct wlr_scene_node *node)
 {
@@ -120,6 +125,33 @@ lab_wlr_scene_output_commit(struct wlr_scene_output *scene_output,
 			wlr_output->name);
 		return false;
 	}
+
+#if HAVE_PLUGINS
+	/* Plugin render hook: post-scene, pre-commit */
+	if (state->buffer) {
+		struct labwc_event_render ev = {
+			.base = { .type = LABWC_EVENT_OUTPUT_RENDER },
+			.output = output,
+			.buffer = state->buffer,
+			.renderer = server.renderer,
+			.scene_output = scene_output,
+			.additional_damage = {0},
+		};
+		plugin_events_emit(LABWC_EVENT_OUTPUT_RENDER, &ev);
+
+		/* Register plugin damage so those regions are re-rendered next frame */
+		if (!wlr_box_empty(&ev.additional_damage)) {
+			pixman_region32_t plugin_damage;
+			pixman_region32_init_rect(&plugin_damage,
+				ev.additional_damage.x,
+				ev.additional_damage.y,
+				ev.additional_damage.width,
+				ev.additional_damage.height);
+			scene_output_damage(scene_output, &plugin_damage);
+			pixman_region32_fini(&plugin_damage);
+		}
+	}
+#endif
 
 	if (state->tearing_page_flip) {
 		if (!wlr_output_test_state(wlr_output, state)) {

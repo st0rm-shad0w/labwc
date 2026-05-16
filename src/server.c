@@ -76,6 +76,11 @@
 #include "workspaces.h"
 #include "xwayland.h"
 
+#if HAVE_PLUGINS
+#include "plugin/manager.h"
+#include "plugin/events.h"
+#endif
+
 #define LAB_EXT_DATA_CONTROL_VERSION 1
 #define LAB_EXT_FOREIGN_TOPLEVEL_LIST_VERSION 1
 #define LAB_WLR_COMPOSITOR_VERSION 6
@@ -118,6 +123,10 @@ reload_config_and_theme(void)
 	resize_indicator_reconfigure();
 	kde_server_decoration_update_default();
 	workspaces_reconfigure();
+
+#if HAVE_PLUGINS
+	plugin_manager_reload();
+#endif
 }
 
 static int
@@ -796,6 +805,9 @@ server_start(void)
 void
 server_finish(void)
 {
+#if HAVE_PLUGINS
+	plugin_manager_finish();
+#endif
 #if HAVE_XWAYLAND
 	xwayland_server_finish();
 #endif

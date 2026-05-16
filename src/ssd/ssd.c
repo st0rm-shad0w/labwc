@@ -20,6 +20,10 @@
 #include "theme.h"
 #include "view.h"
 
+#if HAVE_PLUGINS
+#include "plugin/events.h"
+#endif
+
 struct border
 ssd_thickness(struct view *view)
 {
@@ -46,6 +50,12 @@ ssd_thickness(struct view *view)
 		if (view_titlebar_visible(view)) {
 			thickness.top += theme->titlebar_height;
 		}
+#if HAVE_PLUGINS
+		if (view->plugin_margin_override.fn) {
+			thickness = view->plugin_margin_override.fn(
+				view, thickness, view->plugin_margin_override.user_data);
+		}
+#endif
 		return thickness;
 	}
 
@@ -59,6 +69,12 @@ ssd_thickness(struct view *view)
 	if (!view_titlebar_visible(view)) {
 		thickness.top -= theme->titlebar_height;
 	}
+#if HAVE_PLUGINS
+	if (view->plugin_margin_override.fn) {
+		thickness = view->plugin_margin_override.fn(
+			view, thickness, view->plugin_margin_override.user_data);
+	}
+#endif
 	return thickness;
 }
 
@@ -68,7 +84,7 @@ ssd_max_extents(struct view *view)
 	assert(view);
 	struct border border = ssd_thickness(view);
 
-	int eff_width = view->current.width;
+	int eff_width = view_effective_width(view, /* use_pending */ false);
 	int eff_height = view_effective_height(view, /* use_pending */ false);
 
 	return (struct wlr_box){
@@ -99,12 +115,27 @@ ssd_get_resizing_type(const struct ssd *ssd, struct wlr_cursor *cursor)
 	struct wlr_box view_box = view->current;
 	view_box.height = view_effective_height(view, /* use_pending */ false);
 
-	if (view_titlebar_visible(view)) {
-		/* If the titlebar is visible, consider it part of the view */
-		int titlebar_height = rc.theme->titlebar_height;
-		view_box.y -= titlebar_height;
-		view_box.height += titlebar_height;
-	}
+	/*
+	 * Expand the view box to include SSD decoration areas that
+	 * should NOT be treated as resize zones.  We use the cached
+	 * SSD margin (which accounts for plugin margin overrides)
+	 * minus border_width on each side, since the thin border
+	 * strips ARE resize zones.
+	 *
+	 * For the standard top-titlebar layout this reproduces the
+	 * previous behaviour: expand_top = titlebar_height, others = 0.
+	 * For a plugin side-titlebar, expand_left = bar_width, etc.
+	 */
+	struct border margin = ssd_get_margin(ssd);
+	int bw = rc.theme->border_width;
+	int expand_left   = MAX(margin.left   - bw, 0);
+	int expand_top    = MAX(margin.top    - bw, 0);
+	int expand_right  = MAX(margin.right  - bw, 0);
+	int expand_bottom = MAX(margin.bottom - bw, 0);
+	view_box.x      -= expand_left;
+	view_box.y      -= expand_top;
+	view_box.width  += expand_left + expand_right;
+	view_box.height += expand_top  + expand_bottom;
 
 	if (wlr_box_contains_point(&view_box, cursor->x, cursor->y)) {
 		/* A cursor in bounds of the view is never in an SSD context */
@@ -176,6 +207,24 @@ ssd_create(struct view *view, bool active)
 	ssd_enable_keybind_inhibit_indicator(ssd, view->inhibits_keybinds);
 	ssd->state.geometry = view->current;
 
+	/*
+	 * Set view->ssd before emitting the plugin event so that
+	 * plugin handlers can call helpers that read view->ssd
+	 * (e.g. labwc_ssd_set_titlebar_visible, margin overrides).
+	 */
+	view->ssd = ssd;
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_ssd ev = {
+			.base = { .type = LABWC_EVENT_SSD_CREATE },
+			.view = view,
+			.ssd = ssd,
+		};
+		plugin_events_emit(LABWC_EVENT_SSD_CREATE, &ev);
+	}
+#endif
+
 	return ssd;
 }
 
@@ -214,7 +263,7 @@ ssd_update_geometry(struct ssd *ssd)
 	struct wlr_box cached = ssd->state.geometry;
 	struct wlr_box current = view->current;
 
-	int eff_width = current.width;
+	int eff_width = view_effective_width(view, /* use_pending */ false);
 	int eff_height = view_effective_height(view, /* use_pending */ false);
 
 	bool update_area = eff_width != cached.width || eff_height != cached.height;
@@ -271,12 +320,28 @@ ssd_destroy(struct ssd *ssd)
 		return;
 	}
 
-	/* Maybe reset hover view */
 	struct view *view = ssd->view;
+
+	/*
+	 * Clear hovered_button BEFORE emitting the plugin event,
+	 * because plugin SSD_DESTROY handlers may destroy scene
+	 * nodes that the hovered button belongs to.
+	 */
 	if (server.hovered_button && node_view_from_node(
 			server.hovered_button->node) == view) {
 		server.hovered_button = NULL;
 	}
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_ssd ev = {
+			.base = { .type = LABWC_EVENT_SSD_DESTROY },
+			.view = view,
+			.ssd = ssd,
+		};
+		plugin_events_emit(LABWC_EVENT_SSD_DESTROY, &ev);
+	}
+#endif
 
 	/* Destroy subcomponents */
 	ssd_titlebar_destroy(ssd);

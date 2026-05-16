@@ -39,6 +39,10 @@
 #include "view.h"
 #include "xwayland.h"
 
+#if HAVE_PLUGINS
+#include "plugin/events.h"
+#endif
+
 #if WLR_HAS_X11_BACKEND
 	#include <wlr/backend/x11.h>
 #endif
@@ -274,6 +278,17 @@ static void
 handle_output_destroy(struct wl_listener *listener, void *data)
 {
 	struct output *output = wl_container_of(listener, output, destroy);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_output ev = {
+			.base = { .type = LABWC_EVENT_OUTPUT_REMOVE },
+			.output = output,
+		};
+		plugin_events_emit(LABWC_EVENT_OUTPUT_REMOVE, &ev);
+	}
+#endif
+
 	struct seat *seat = &server.seat;
 	regions_evacuate_output(output);
 	regions_destroy(seat, &output->regions);
@@ -665,6 +680,10 @@ handle_new_output(struct wl_listener *listener, void *data)
 
 	wl_list_init(&output->regions);
 
+#if HAVE_PLUGINS
+	wl_list_init(&output->plugin_data);
+#endif
+
 	/*
 	 * Create layer-trees (background, bottom, top and overlay) and
 	 * a layer-popup-tree.
@@ -712,6 +731,16 @@ handle_new_output(struct wl_listener *listener, void *data)
 	}
 
 	do_output_layout_change();
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_output ev = {
+			.base = { .type = LABWC_EVENT_OUTPUT_ADD },
+			.output = output,
+		};
+		plugin_events_emit(LABWC_EVENT_OUTPUT_ADD, &ev);
+	}
+#endif
 }
 
 static void output_manager_init(void);

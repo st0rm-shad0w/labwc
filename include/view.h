@@ -288,6 +288,17 @@ struct view {
 		struct wl_signal set_icon;
 		struct wl_signal destroy;
 	} events;
+
+#if HAVE_PLUGINS
+	struct wl_list plugin_data; /* struct plugin_data_entry.link */
+	struct {
+		struct border (*fn)(struct view *view,
+			struct border default_margin, void *user_data);
+		void *user_data;
+	} plugin_margin_override;
+	bool plugin_titlebar_hidden;
+	bool plugin_shade_horizontal;
+#endif
 };
 
 struct view_query {
@@ -506,6 +517,16 @@ void view_apply_natural_geometry(struct view *view);
  * @use_pending: if false, report current height; otherwise, report pending height
  */
 int view_effective_height(struct view *view, bool use_pending);
+
+/**
+ * view_effective_width - effective width of view, with respect to shaded state
+ * @view: view for which effective width is desired
+ * @use_pending: if false, report current width; otherwise, report pending width
+ *
+ * Returns 0 when horizontally shaded (plugin_shade_horizontal), otherwise
+ * returns the actual width.
+ */
+int view_effective_width(struct view *view, bool use_pending);
 
 /**
  * view_center - center view within some region

@@ -317,6 +317,10 @@ struct server {
 	pid_t primary_client_pid;
 
 	char *title_fmt;
+
+#if HAVE_PLUGINS
+	struct wl_list plugins;  /* struct loaded_plugin.link */
+#endif
 };
 
 /* defined in main.c */

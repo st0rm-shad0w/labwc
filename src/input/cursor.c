@@ -38,6 +38,10 @@
 #include "view.h"
 #include "xwayland.h"
 
+#if HAVE_PLUGINS
+#include "plugin/events.h"
+#endif
+
 #if WLR_HAS_LIBINPUT_BACKEND
 	#include <wlr/backend/libinput.h>
 #endif
@@ -893,6 +897,22 @@ preprocess_cursor_motion(struct seat *seat, struct wlr_pointer *pointer,
 	 * without any input.
 	 */
 	wlr_cursor_move(seat->cursor, &pointer->base, dx, dy);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_pointer_motion ev = {
+			.base = { .type = LABWC_EVENT_POINTER_MOTION },
+			.x = seat->cursor->x,
+			.y = seat->cursor->y,
+			.dx = dx,
+			.dy = dy,
+		};
+		if (plugin_events_emit(LABWC_EVENT_POINTER_MOTION, &ev)) {
+			return;
+		}
+	}
+#endif
+
 	double sx, sy;
 	bool notify = cursor_process_motion(time_msec, &sx, &sy);
 	if (notify) {
@@ -1295,6 +1315,23 @@ handle_button(struct wl_listener *listener, void *data)
 	idle_manager_notify_activity(seat->wlr_seat);
 	cursor_set_visible(seat, /* visible */ true);
 
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_button ev = {
+			.base = { .type = LABWC_EVENT_BUTTON },
+			.button = event->button,
+			.modifiers = keyboard_get_all_modifiers(&server.seat),
+			.x = seat->cursor->x,
+			.y = seat->cursor->y,
+			.pressed = (event->state
+				== WL_POINTER_BUTTON_STATE_PRESSED),
+		};
+		if (plugin_events_emit(LABWC_EVENT_BUTTON, &ev)) {
+			return; /* plugin consumed the button event */
+		}
+	}
+#endif
+
 	bool notify;
 	switch (event->state) {
 	case WL_POINTER_BUTTON_STATE_PRESSED:
@@ -1446,6 +1483,20 @@ handle_axis(struct wl_listener *listener, void *data)
 		|| event->pointer->base.type == WLR_INPUT_DEVICE_TOUCH);
 	struct input *input = event->pointer->base.data;
 	double scroll_factor = input->scroll_factor;
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_axis ev = {
+			.base = { .type = LABWC_EVENT_POINTER_AXIS },
+			.delta = event->delta,
+			.orientation = event->orientation,
+			.modifiers = keyboard_get_all_modifiers(&server.seat),
+		};
+		if (plugin_events_emit(LABWC_EVENT_POINTER_AXIS, &ev)) {
+			return;
+		}
+	}
+#endif
 
 	bool notify = process_cursor_axis(event->orientation,
 		event->delta, event->delta_discrete);

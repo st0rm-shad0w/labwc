@@ -18,6 +18,10 @@
 #include "ssd.h"
 #include "view.h"
 
+#if HAVE_PLUGINS
+#include "plugin/events.h"
+#endif
+
 /* Holds layout -> surface offsets to report motion events in relative coords */
 struct touch_point {
 	int32_t touch_id;
@@ -85,6 +89,21 @@ handle_touch_motion(struct wl_listener *listener, void *data)
 
 	idle_manager_notify_activity(seat->wlr_seat);
 
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_touch ev = {
+			.base = { .type = LABWC_EVENT_TOUCH_MOTION },
+			.touch_id = event->touch_id,
+			.x = event->x,
+			.y = event->y,
+			.time_msec = event->time_msec,
+		};
+		if (plugin_events_emit(LABWC_EVENT_TOUCH_MOTION, &ev)) {
+			return;
+		}
+	}
+#endif
+
 	int touch_point_count = wl_list_length(&seat->touch_points);
 
 	/* Find existing touch point to determine initial offsets to subtract */
@@ -133,6 +152,21 @@ handle_touch_down(struct wl_listener *listener, void *data)
 	struct wlr_touch_down_event *event = data;
 
 	idle_manager_notify_activity(seat->wlr_seat);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_touch ev = {
+			.base = { .type = LABWC_EVENT_TOUCH_DOWN },
+			.touch_id = event->touch_id,
+			.x = event->x,
+			.y = event->y,
+			.time_msec = event->time_msec,
+		};
+		if (plugin_events_emit(LABWC_EVENT_TOUCH_DOWN, &ev)) {
+			return;
+		}
+	}
+#endif
 
 	/* Compute layout => surface offset and save for this touch point */
 	struct touch_point *touch_point = znew(*touch_point);
@@ -196,6 +230,19 @@ handle_touch_up(struct wl_listener *listener, void *data)
 	struct wlr_touch_up_event *event = data;
 
 	idle_manager_notify_activity(seat->wlr_seat);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_touch ev = {
+			.base = { .type = LABWC_EVENT_TOUCH_UP },
+			.touch_id = event->touch_id,
+			.time_msec = event->time_msec,
+		};
+		if (plugin_events_emit(LABWC_EVENT_TOUCH_UP, &ev)) {
+			return;
+		}
+	}
+#endif
 
 	/* Remove the touch point from the seat */
 	struct touch_point *touch_point, *tmp;

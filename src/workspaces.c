@@ -25,6 +25,10 @@
 #include "theme.h"
 #include "view.h"
 
+#if HAVE_PLUGINS
+#include "plugin/events.h"
+#endif
+
 #define EXT_WORKSPACES_VERSION 1
 
 /* Internal helpers */
@@ -498,6 +502,17 @@ workspaces_switch_to(struct workspace *target, bool update_focus)
 	wlr_ext_workspace_handle_v1_set_active(target->ext_workspace, true);
 
 	show_desktop_reset();
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_workspace ev = {
+			.base = { .type = LABWC_EVENT_WORKSPACE_SWITCH },
+			.from = server.workspaces.last,
+			.to = target,
+		};
+		plugin_events_emit(LABWC_EVENT_WORKSPACE_SWITCH, &ev);
+	}
+#endif
 }
 
 void

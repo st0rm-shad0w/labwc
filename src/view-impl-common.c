@@ -6,6 +6,10 @@
 #include "view.h"
 #include "window-rules.h"
 
+#if HAVE_PLUGINS
+#include "plugin/events.h"
+#endif
+
 void
 view_impl_map(struct view *view)
 {
@@ -37,6 +41,16 @@ view_impl_map(struct view *view)
 		}
 	}
 
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_MAP },
+			.view = view,
+		};
+		plugin_events_emit(LABWC_EVENT_VIEW_MAP, &ev);
+	}
+#endif
+
 	wlr_log(WLR_DEBUG, "[map] identifier=%s, title=%s",
 		view->app_id, view->title);
 }
@@ -44,6 +58,16 @@ view_impl_map(struct view *view)
 void
 view_impl_unmap(struct view *view)
 {
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_UNMAP },
+			.view = view,
+		};
+		plugin_events_emit(LABWC_EVENT_VIEW_UNMAP, &ev);
+	}
+#endif
+
 	view_update_visibility(view);
 
 	/*
@@ -115,4 +139,14 @@ view_impl_apply_geometry(struct view *view, int w, int h)
 
 	current->width = w;
 	current->height = h;
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_RESIZED },
+			.view = view,
+		};
+		plugin_events_emit(LABWC_EVENT_VIEW_RESIZED, &ev);
+	}
+#endif
 }

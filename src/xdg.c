@@ -27,6 +27,10 @@
 #include "window-rules.h"
 #include "workspaces.h"
 
+#if HAVE_PLUGINS
+#include "plugin/events.h"
+#endif
+
 #define LAB_XDG_SHELL_VERSION 6
 #define CONFIGURE_TIMEOUT_MS 100
 
@@ -487,6 +491,19 @@ handle_request_move(struct wl_listener *listener, void *data)
 	 * Note: interactive_begin() checks that view == server.grabbed_view.
 	 */
 	struct view *view = wl_container_of(listener, view, request_move);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_REQUEST_MOVE },
+			.view = view,
+		};
+		if (plugin_events_emit(LABWC_EVENT_VIEW_REQUEST_MOVE, &ev)) {
+			return;
+		}
+	}
+#endif
+
 	interactive_begin(view, LAB_INPUT_STATE_MOVE, LAB_EDGE_NONE);
 }
 
@@ -505,6 +522,19 @@ handle_request_resize(struct wl_listener *listener, void *data)
 	 */
 	struct wlr_xdg_toplevel_resize_event *event = data;
 	struct view *view = wl_container_of(listener, view, request_resize);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_REQUEST_RESIZE },
+			.view = view,
+		};
+		if (plugin_events_emit(LABWC_EVENT_VIEW_REQUEST_RESIZE, &ev)) {
+			return;
+		}
+	}
+#endif
+
 	interactive_begin(view, LAB_INPUT_STATE_RESIZE, event->edges);
 }
 
@@ -512,6 +542,19 @@ static void
 handle_request_minimize(struct wl_listener *listener, void *data)
 {
 	struct view *view = wl_container_of(listener, view, request_minimize);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_REQUEST_MINIMIZE },
+			.view = view,
+		};
+		if (plugin_events_emit(LABWC_EVENT_VIEW_REQUEST_MINIMIZE, &ev)) {
+			return;
+		}
+	}
+#endif
+
 	view_minimize(view, xdg_toplevel_from_view(view)->requested.minimized);
 }
 
@@ -528,6 +571,18 @@ handle_request_maximize(struct wl_listener *listener, void *data)
 		 */
 		return;
 	}
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_REQUEST_MAXIMIZE },
+			.view = view,
+		};
+		if (plugin_events_emit(LABWC_EVENT_VIEW_REQUEST_MAXIMIZE, &ev)) {
+			return;
+		}
+	}
+#endif
 
 	bool maximized = toplevel->requested.maximized;
 	view_maximize(view, maximized ? VIEW_AXIS_BOTH : VIEW_AXIS_NONE);
@@ -546,6 +601,18 @@ handle_request_fullscreen(struct wl_listener *listener, void *data)
 		 */
 		return;
 	}
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_view ev = {
+			.base = { .type = LABWC_EVENT_VIEW_REQUEST_FULLSCREEN },
+			.view = view,
+		};
+		if (plugin_events_emit(LABWC_EVENT_VIEW_REQUEST_FULLSCREEN, &ev)) {
+			return;
+		}
+	}
+#endif
 
 	set_fullscreen_from_request(view,
 		&xdg_toplevel_from_view(view)->requested);

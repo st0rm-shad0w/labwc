@@ -17,6 +17,10 @@
 #include "translate.h"
 #include "menu/menu.h"
 
+#if HAVE_PLUGINS
+#include "plugin/manager.h"
+#endif
+
 /*
  * Globals
  *
@@ -283,6 +287,10 @@ main(int argc, char *argv[])
 	rc.theme = &theme;
 
 	menu_init();
+
+#if HAVE_PLUGINS
+	plugin_manager_init();
+#endif
 
 	/* Delay startup of applications until the event loop is ready */
 	struct idle_ctx idle_ctx = {

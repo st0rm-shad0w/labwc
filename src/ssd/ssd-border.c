@@ -18,7 +18,7 @@ ssd_border_create(struct ssd *ssd)
 
 	struct view *view = ssd->view;
 	struct theme *theme = rc.theme;
-	int width = view->current.width;
+	int width = view_effective_width(view, /* use_pending */ false);
 	int height = view_effective_height(view, /* use_pending */ false);
 	int full_width = width + 2 * theme->border_width;
 	int corner_width = ssd_get_corner_width();
@@ -59,7 +59,7 @@ ssd_border_create(struct ssd *ssd)
 		wlr_scene_node_set_enabled(&ssd->border.tree->node, false);
 	}
 
-	if (view->current.width > 0 && view->current.height > 0) {
+	if (view_effective_width(view, false) > 0 && view->current.height > 0) {
 		/*
 		 * The SSD is recreated by a Reconfigure request
 		 * thus we may need to handle squared corners.
@@ -92,7 +92,7 @@ ssd_border_update(struct ssd *ssd)
 
 	struct theme *theme = rc.theme;
 
-	int width = view->current.width;
+	int width = view_effective_width(view, /* use_pending */ false);
 	int height = view_effective_height(view, /* use_pending */ false);
 	int full_width = width + 2 * theme->border_width;
 	int corner_width = ssd_get_corner_width();

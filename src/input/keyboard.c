@@ -21,6 +21,10 @@
 #include "view.h"
 #include "workspaces.h"
 
+#if HAVE_PLUGINS
+#include "plugin/events.h"
+#endif
+
 #if WLR_HAS_SESSION
 	#include <wlr/backend/session.h>
 #endif
@@ -642,6 +646,22 @@ handle_key(struct wl_listener *listener, void *data)
 
 	/* any new press/release cancels current keybind repeat */
 	keyboard_cancel_keybind_repeat(keyboard);
+
+#if HAVE_PLUGINS
+	{
+		struct labwc_event_key ev = {
+			.base = { .type = LABWC_EVENT_KEY },
+			.keycode = event->keycode,
+			.keysym = xkb_state_key_get_one_sym(
+				keyboard->wlr_keyboard->xkb_state, event->keycode + 8),
+			.modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard),
+			.pressed = (event->state == WL_KEYBOARD_KEY_STATE_PRESSED),
+		};
+		if (plugin_events_emit(LABWC_EVENT_KEY, &ev)) {
+			return; /* plugin consumed the key event */
+		}
+	}
+#endif
 
 	enum lab_key_handled handled =
 		handle_compositor_keybindings(keyboard, event);

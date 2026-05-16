@@ -126,6 +126,9 @@ conf_data.set10('HAVE_RSVG', have_rsvg)
 
 conf_data.set10('HAVE_LIBSFDO', have_libsfdo)
 
+have_plugins = not get_option('plugins').disabled()
+conf_data.set10('HAVE_PLUGINS', have_plugins)
+
 foreach sym : ['LIBINPUT_CONFIG_DRAG_LOCK_ENABLED_STICKY', 'LIBINPUT_CONFIG_3FG_DRAG_ENABLED_3FG']
   has_sym = input.type_name() != 'internal' \
               and cc.has_header_symbol('libinput.h', sym, dependencies: input)
@@ -137,6 +140,9 @@ if get_option('static_analyzer').enabled()
 endif
 
 link_args = []
+if have_plugins
+  link_args += ['-rdynamic']
+endif
 if get_option('sections').enabled()
   add_project_arguments(['-ffunction-sections'], language: 'c')
   link_args += [
@@ -175,6 +181,10 @@ labwc_deps = [
   math,
   png,
 ]
+if have_plugins
+  dl = cc.find_library('dl', required: true)
+  labwc_deps += [dl]
+endif
 if have_rsvg
   labwc_deps += [
     svg,

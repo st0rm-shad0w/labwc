@@ -359,6 +359,83 @@ fill_window_rules(xmlNode *node)
 	}
 }
 
+#if HAVE_PLUGINS
+static void
+fill_plugins(xmlNode *node)
+{
+	/* Clear previous plugin config entries */
+	struct plugin_config_entry *old, *old_tmp;
+	wl_list_for_each_safe(old, old_tmp, &rc.plugins, link) {
+		wl_list_remove(&old->link);
+		free(old->name);
+		free(old->path);
+		free(old->config_xml);
+		free(old);
+	}
+
+	for (xmlNode *child = node->children; child; child = child->next) {
+		if (child->type != XML_ELEMENT_NODE) {
+			continue;
+		}
+		if (strcasecmp((const char *)child->name, "plugin")) {
+			continue;
+		}
+
+		/*
+		 * After lab_xml_expand_dotted_attributes(), the attributes
+		 * of <plugin name="..." path="..."> have been converted
+		 * to child elements <name>...</name> <path>...</path>.
+		 * Look for those instead of xmlGetProp().
+		 */
+		char *name = NULL;
+		char *path = NULL;
+		xmlBufferPtr config_buf = xmlBufferCreate();
+
+		for (xmlNode *prop = child->children; prop; prop = prop->next) {
+			if (prop->type != XML_ELEMENT_NODE) {
+				continue;
+			}
+			xmlChar *val = xmlNodeGetContent(prop);
+			if (!strcasecmp((const char *)prop->name, "name")) {
+				name = val ? strdup((const char *)val) : NULL;
+			} else if (!strcasecmp((const char *)prop->name, "path")) {
+				path = val ? strdup((const char *)val) : NULL;
+			} else {
+				/* Other children are plugin config */
+				xmlNodeDump(config_buf, prop->doc, prop, 0, 0);
+			}
+			if (val) {
+				xmlFree(val);
+			}
+		}
+
+		if (!name && !path) {
+			wlr_log(WLR_ERROR,
+				"<plugin> needs 'name' or 'path' attribute");
+			free(name);
+			free(path);
+			xmlBufferFree(config_buf);
+			continue;
+		}
+
+		struct plugin_config_entry *entry = znew(*entry);
+		entry->name = name;
+		entry->path = path;
+		entry->config_xml = NULL;
+		if (xmlBufferLength(config_buf) > 0) {
+			entry->config_xml =
+				strdup((const char *)xmlBufferContent(config_buf));
+		}
+		xmlBufferFree(config_buf);
+		wl_list_append(&rc.plugins, &entry->link);
+
+		wlr_log(WLR_INFO, "config: plugin '%s' (path=%s)",
+			entry->name ? entry->name : "(none)",
+			entry->path ? entry->path : "(auto)");
+	}
+}
+#endif /* HAVE_PLUGINS */
+
 static void
 clear_window_switcher_fields(void)
 {
@@ -1118,6 +1195,10 @@ entry(xmlNode *node, char *nodename, char *content)
 		fill_window_switcher_fields(node);
 	} else if (!strcasecmp(nodename, "windowRules")) {
 		fill_window_rules(node);
+#if HAVE_PLUGINS
+	} else if (!strcasecmp(nodename, "plugins")) {
+		fill_plugins(node);
+#endif
 	} else if (!strcasecmp(nodename, "font.theme")) {
 		fill_font(node);
 	} else if (!strcasecmp(nodename, "map.tablet")) {
@@ -1511,6 +1592,9 @@ rcxml_init(void)
 		wl_list_init(&rc.window_switcher.osd.fields);
 		wl_list_init(&rc.window_rules);
 		wl_list_init(&rc.touch_configs);
+#if HAVE_PLUGINS
+		wl_list_init(&rc.plugins);
+#endif
 	}
 	has_run = true;
 
@@ -2113,6 +2197,17 @@ rcxml_finish(void)
 	wl_list_for_each_safe(rule, rule_tmp, &rc.window_rules, link) {
 		rule_destroy(rule);
 	}
+
+#if HAVE_PLUGINS
+	struct plugin_config_entry *pe, *pe_tmp;
+	wl_list_for_each_safe(pe, pe_tmp, &rc.plugins, link) {
+		wl_list_remove(&pe->link);
+		free(pe->name);
+		free(pe->path);
+		free(pe->config_xml);
+		free(pe);
+	}
+#endif
 
 	/* Reset state vars for starting fresh when Reload is triggered */
 	mouse_scroll_factor = -1;

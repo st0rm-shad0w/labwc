@@ -28,7 +28,7 @@ ssd_titlebar_create(struct ssd *ssd)
 {
 	struct view *view = ssd->view;
 	struct theme *theme = rc.theme;
-	int width = view->current.width;
+	int width = view_effective_width(view, /* use_pending */ false);
 	int corner_width = ssd_get_corner_width();
 
 	ssd->titlebar.tree = lab_wlr_scene_tree_create(ssd->tree);
@@ -133,8 +133,8 @@ ssd_titlebar_create(struct ssd *ssd)
 	}
 }
 
-static void
-update_button_state(struct ssd_button *button, enum lab_button_state state,
+void
+ssd_button_update_state(struct ssd_button *button, enum lab_button_state state,
 		bool enable)
 {
 	if (enable) {
@@ -158,7 +158,7 @@ static void
 set_squared_corners(struct ssd *ssd, bool enable)
 {
 	struct view *view = ssd->view;
-	int width = view->current.width;
+	int width = view_effective_width(view, /* use_pending */ false);
 	int corner_width = ssd_get_corner_width();
 	struct theme *theme = rc.theme;
 
@@ -179,11 +179,11 @@ set_squared_corners(struct ssd *ssd, bool enable)
 		/* (Un)round the corner buttons */
 		struct ssd_button *button;
 		wl_list_for_each(button, &subtree->buttons_left, link) {
-			update_button_state(button, LAB_BS_ROUNDED, !enable);
+			ssd_button_update_state(button, LAB_BS_ROUNDED, !enable);
 			break;
 		}
 		wl_list_for_each(button, &subtree->buttons_right, link) {
-			update_button_state(button, LAB_BS_ROUNDED, !enable);
+			ssd_button_update_state(button, LAB_BS_ROUNDED, !enable);
 			break;
 		}
 	}
@@ -199,13 +199,13 @@ set_alt_button_icon(struct ssd *ssd, enum lab_node_type type, bool enable)
 		struct ssd_button *button;
 		wl_list_for_each(button, &subtree->buttons_left, link) {
 			if (button->type == type) {
-				update_button_state(button,
+				ssd_button_update_state(button,
 					LAB_BS_TOGGLED, enable);
 			}
 		}
 		wl_list_for_each(button, &subtree->buttons_right, link) {
 			if (button->type == type) {
-				update_button_state(button,
+				ssd_button_update_state(button,
 					LAB_BS_TOGGLED, enable);
 			}
 		}
@@ -221,7 +221,8 @@ update_visible_buttons(struct ssd *ssd)
 {
 	struct view *view = ssd->view;
 	struct theme *theme = rc.theme;
-	int width = MAX(view->current.width - 2 * theme->window_titlebar_padding_width, 0);
+	int width = MAX(view_effective_width(view, false)
+		- 2 * theme->window_titlebar_padding_width, 0);
 	int button_width = theme->window_button_width;
 	int button_spacing = theme->window_button_spacing;
 	int button_count_left = rc.nr_title_buttons_left;
@@ -271,7 +272,7 @@ void
 ssd_titlebar_update(struct ssd *ssd)
 {
 	struct view *view = ssd->view;
-	int width = view->current.width;
+	int width = view_effective_width(view, /* use_pending */ false);
 	int corner_width = ssd_get_corner_width();
 	struct theme *theme = rc.theme;
 
@@ -366,7 +367,7 @@ ssd_update_title_positions(struct ssd *ssd, int offset_left, int offset_right)
 {
 	struct view *view = ssd->view;
 	struct theme *theme = rc.theme;
-	int width = view->current.width;
+	int width = view_effective_width(view, /* use_pending */ false);
 	int title_bg_width = width - offset_left - offset_right;
 
 	enum ssd_active_state active;
@@ -449,7 +450,7 @@ ssd_update_title(struct ssd *ssd)
 
 	int offset_left, offset_right;
 	get_title_offsets(ssd, &offset_left, &offset_right);
-	int title_bg_width = view->current.width - offset_left - offset_right;
+	int title_bg_width = view_effective_width(view, false) - offset_left - offset_right;
 
 	enum ssd_active_state active;
 	FOR_EACH_ACTIVE_STATE(active) {
@@ -501,11 +502,11 @@ ssd_update_hovered_button(struct wlr_scene_node *node)
 
 	/* Disable old hover */
 	if (server.hovered_button) {
-		update_button_state(server.hovered_button, LAB_BS_HOVERED, false);
+		ssd_button_update_state(server.hovered_button, LAB_BS_HOVERED, false);
 	}
 	server.hovered_button = button;
 	if (button) {
-		update_button_state(button, LAB_BS_HOVERED, true);
+		ssd_button_update_state(button, LAB_BS_HOVERED, true);
 	}
 }
 
@@ -516,6 +517,6 @@ ssd_should_be_squared(struct ssd *ssd)
 	int corner_width = ssd_get_corner_width();
 
 	return (view_is_tiled_and_notify_tiled(view)
-			|| view->current.width < corner_width * 2)
+			|| view_effective_width(view, false) < corner_width * 2)
 		&& view->maximized != VIEW_AXIS_BOTH;
 }
